@@ -22,6 +22,7 @@ import 'core/system/known_folders.dart';
 import 'core/system/launch_args.dart';
 import 'core/system/music_recognizer.dart';
 import 'core/system/probe_service.dart';
+import 'core/system/windows_associations.dart';
 import 'features/music_id/music_id_controller.dart';
 import 'features/player/player_controller.dart';
 import 'features/player/player_settings_binding.dart';
@@ -37,6 +38,8 @@ import 'ui/tokens.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  SecondInstance.initChannel();
+
   // A second launch (double-click on another video) hands its arguments to
   // this instance and exits.
   await WindowsSingleInstance.ensureSingleInstance(
@@ -56,6 +59,8 @@ Future<void> main(List<String> args) async {
 
 Future<void> _start(List<String> args) async {
   MediaKit.ensureInitialized();
+  unawaited(WindowsAssociations.registerUserAssociations());
+
   final dataDir = Directory(p.join(Platform.environment['APPDATA'] ?? Directory.systemTemp.path, 'UHF Media'));
   final settingsStore = SettingsStore(dataDir);
   final initial = await settingsStore.load();
@@ -133,5 +138,9 @@ Future<void> _start(List<String> args) async {
 
   SecondInstance.listener = secondInstanceHandler(shell: shell, player: player);
   final initialFile = firstExistingFile(args);
-  if (initialFile != null) unawaited(player.open(initialFile));
+  if (initialFile != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(player.open(initialFile));
+    });
+  }
 }

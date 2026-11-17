@@ -104,7 +104,7 @@ static int extract_all(HANDLE exe, int64_t size, const wchar_t *dest) {
 
     wchar_t rel[1024];
     if (!MultiByteToWideChar(CP_UTF8, 0, name, -1, rel, 1024)) return 0;
-    for (wchar_t *c = rel; *c; c++) if (*c == L'/') *c = L'\\';
+    for (wchar_t *c = rel; *c; c++) if (*c == L'\\') *c = L'\\';
     wchar_t full[MAX_PATH * 2];
     swprintf(full, MAX_PATH * 2, L"%ls\\%ls", dest, rel);
     make_dirs(full);
@@ -132,6 +132,22 @@ static void remove_tree(const wchar_t *dir) {
 }
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show) {
+  // If UHF Media is already open, forward the command line and exit immediately.
+  HWND existing = FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"UHF Media");
+  if (existing != NULL) {
+    wchar_t *cmdline = GetCommandLineW();
+    if (cmdline != NULL) {
+      COPYDATASTRUCT cds;
+      cds.dwData = 0x5548464D;
+      cds.cbData = (DWORD)((wcslen(cmdline) + 1) * sizeof(wchar_t));
+      cds.lpData = cmdline;
+      SendMessageW(existing, WM_COPYDATA, 0, (LPARAM)&cds);
+    }
+    if (IsIconic(existing)) ShowWindow(existing, SW_RESTORE);
+    SetForegroundWindow(existing);
+    return 0;
+  }
+
   wchar_t self[MAX_PATH];
   GetModuleFileNameW(NULL, self, MAX_PATH);
 

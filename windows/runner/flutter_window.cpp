@@ -1,8 +1,10 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <shellapi.h>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -27,6 +29,12 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  second_instance_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "uhf_media/second_instance",
+          &flutter::StandardMethodCodec::GetInstance());
+
   // The window is shown by window_manager once its saved size and position
   // are applied (WindowManagerHost.configure), to avoid a flash at the
   // default size.
@@ -41,6 +49,8 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  second_instance_channel_ = nullptr;
+
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -52,6 +62,27 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_COPYDATA) {
+    auto* cds = reinterpret_cast<COPYDATASTRUCT*>(lparam);
+    if (cds && cds->dwData == 0x5548464D && cds->lpData) {
+      const wchar_t* raw_cmd = reinterpret_cast<const wchar_t*>(cds->lpData);
+      int argc = 0;
+      wchar_t** argv = ::CommandLineToArgvW(raw_cmd, &argc);
+      if (argv != nullptr) {
+        std::vector<flutter::EncodableValue> args;
+        for (int i = 1; i < argc; i++) {
+          args.push_back(flutter::EncodableValue(Utf8FromUtf16(argv[i])));
+        }
+        ::LocalFree(argv);
+        if (second_instance_channel_) {
+          second_instance_channel_->InvokeMethod(
+              "openArgs", std::make_unique<flutter::EncodableValue>(args));
+        }
+      }
+    }
+    return TRUE;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

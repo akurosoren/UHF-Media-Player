@@ -1,13 +1,28 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 
 import '../../core/system/launch_args.dart';
 import '../player/player_controller.dart';
 import 'shell_controller.dart';
 
-/// Bridges windows_single_instance (called before the UI exists) and the app.
+const MethodChannel _runnerSecondInstanceChannel = MethodChannel('uhf_media/second_instance');
+
+/// Bridges runner WM_COPYDATA / single-instance events (called before the UI exists) and the app.
 abstract final class SecondInstance {
   static void Function(List<String> args)? _listener;
   static final List<List<String>> _pending = [];
+  static bool _channelInitialized = false;
+
+  static void initChannel() {
+    if (_channelInitialized) return;
+    _channelInitialized = true;
+    _runnerSecondInstanceChannel.setMethodCallHandler((call) async {
+      if (call.method == 'openArgs' && call.arguments is List) {
+        final list = (call.arguments as List).map((o) => o.toString()).toList();
+        deliver(list);
+      }
+    });
+  }
 
   static void deliver(List<String> args) {
     final listener = _listener;
